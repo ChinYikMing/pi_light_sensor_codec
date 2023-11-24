@@ -37,25 +37,72 @@ class GroveLightSensor(object):
 
 Grove = GroveLightSensor
 
+# detect unicode
+one_byte_mask   = 0b00000000
+two_byte_mask   = 0b11000000
+three_byte_mask = 0b11100000
+four_byte_mask  = 0b11110000
+
+def used_four_byte(bin_byte):
+    return (bin_byte & four_byte_mask) == four_byte_mask
+
+def used_three_byte(bin_byte):
+    return (bin_byte & three_byte_mask) == three_byte_mask
+
+def used_two_byte(bin_byte):
+    return (bin_byte & two_byte_mask) == two_byte_mask
+
+def used_one_byte(bin_byte):
+    return (bin_byte & one_byte_mask) == one_byte_mask
+
+def detect_bytes_n(sensor, n):
+    byte_arr = []
+    for _ in range(0, n):
+        one_byte = detect_one_byte(sensor)
+        byte_arr.append(int(format(int(one_byte, 2), '08b'), 2))
+    return byte_arr
+
+def detect_bytes(sensor):
+    byte_msg = ""
+    byte_arr = []
+    #print('Detecting light...')
+    one_byte_str = detect_one_byte(sensor)
+    one_byte = int(format(int(one_byte_str, 2), '08b'), 2)
+    byte_arr.append(one_byte)
+
+    if used_four_byte(one_byte):
+        byte_arr.extend(detect_bytes_n(sensor, 3))
+    elif used_three_byte(one_byte):
+        byte_arr.extend(detect_bytes_n(sensor, 2))
+    elif used_two_byte(one_byte):
+        byte_arr.extend(detect_bytes_n(sensor, 1))
+    elif used_one_byte(one_byte):
+        pass
+
+    # ascii
+    if len(byte_arr) == 1 :
+        return byte_decode(one_byte_str)
+        # return ''.join(chr(b) for b in byte_arr)
+    # unicode
+    return bytearray(byte_arr).decode(encoding = 'utf-8')
+
 
 def detect_one_byte(sensor):
     byte_msg = ""
     #print('Detecting light...')
     for _ in range(0,8) :
-        
+
         if sensor.light >= 50:
             byte_msg += '1'
         else :
             byte_msg += '0'
-        
+
         print('Light value: {0}'.format(sensor.light))
         time.sleep(st)
-    
-    return byte_decode(byte_msg)
-        
-        
-        
-    
+
+    return byte_msg
+    # return byte_decode(byte_msg)
+
 
 
 def byte_decode(byte_msg):
@@ -135,14 +182,11 @@ def main():
                 sock.send('ARQ'.encode())
                 retransmission = True
         
-        
         for _ in range(0,2):
-            b =detect_one_byte(sensor)
-            print(b)
-            num += (b)
-            
+            num += (byte_decode(detect_one_byte(sensor)))
+
         for _ in range(0,int(num)):
-            msg += (detect_one_byte(sensor))
+            msg += (detect_bytes(sensor))
         
         print('Your msg is: ' + msg)
         sock.send('ACK'.encode())

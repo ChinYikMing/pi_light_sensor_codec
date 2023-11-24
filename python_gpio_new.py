@@ -91,12 +91,14 @@ def transmission():
     init_GPIO()
     preamable(22)
     print("msg: ", msg)
-    if len(msg) < 10:
-        blink_msg(decode( '0' + str(len(msg))),22) # exp : len(msg) = 2 send '02'
+    if len(bytearray(msg.encode(encoding='utf-8'))) < 10:
+        blink_msg(decode( '0' + str(len(bytearray(msg.encode(encoding='utf-8'))))),22)
     else :
-        blink_msg(decode(str(len(msg))),22) #exp len(msg) = 17 send '17'
-    
-    blink_msg(decode(msg),22)
+        blink_msg(decode(str(len(bytearray(msg.encode(encoding='utf-8'))))),22)
+
+    bytes_arr = bytearray(msg.encode(encoding='utf-8'))
+    blink_msg([bin(v)[2:].zfill(8) for v in bytes_arr],22)
+
     GPIO.cleanup()
     user_feedback()
 
