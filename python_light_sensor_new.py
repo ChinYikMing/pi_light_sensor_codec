@@ -59,6 +59,8 @@ def detect_bytes_n(sensor, n):
     byte_arr = []
     for _ in range(0, n):
         one_byte = detect_one_byte(sensor)
+        if one_byte == 'err':
+            return 'err'
         byte_arr.append(int(format(int(one_byte, 2), '08b'), 2))
     return byte_arr
 
@@ -67,15 +69,27 @@ def detect_bytes(sensor):
     byte_arr = []
     #print('Detecting light...')
     one_byte_str = detect_one_byte(sensor)
+    if one_byte_str == 'err':
+        return 'err'
     one_byte = int(format(int(one_byte_str, 2), '08b'), 2)
     byte_arr.append(one_byte)
 
+    ret = ''
     if used_four_byte(one_byte):
-        byte_arr.extend(detect_bytes_n(sensor, 3))
+        ret = detect_bytes_n(sensor, 3)
+        if one_byte_str == 'err':
+            return 'err'
+        byte_arr.extend(ret)
     elif used_three_byte(one_byte):
-        byte_arr.extend(detect_bytes_n(sensor, 2))
+        ret = detect_bytes_n(sensor, 2)
+        if one_byte_str == 'err':
+            return 'err'
+        byte_arr.extend(ret)
     elif used_two_byte(one_byte):
-        byte_arr.extend(detect_bytes_n(sensor, 1))
+        ret = detect_bytes_n(sensor, 1)
+        if one_byte_str == 'err':
+            return 'err'
+        byte_arr.extend(ret)
     elif used_one_byte(one_byte):
         pass
 
@@ -92,7 +106,9 @@ def detect_one_byte(sensor):
     #print('Detecting light...')
     for _ in range(0,8) :
 
-        if sensor.light >= 50:
+        if sensor.light >= 295:
+            return 'err'
+        elif sensor.light >= 50:
             byte_msg += '1'
         else :
             byte_msg += '0'
@@ -141,10 +157,72 @@ def detect_preamable(sensor):
     
 
 
+sock = None
+retransmission = False
+gpio_pid = None
+num =''
+msg = ''
+sensor = None
 
+def decode_reliable():
+    global sock
+    global retransmission
+    global num
+    global msg
+    global sensor
+
+    num = ''
+    msg = ''
+    ret = ''
+    retransmission = False
+
+    while sensor.light < 100:
+        continue
+    
+    print('Ready')
+    
+    while not detect_preamable(sensor):
+        
+        os.kill(gpio_pid, signal.SIGUSR1)
+        print('Not preamable. Send signal to sender!!!!!!')
+        continue
+        if not retransmission:
+            print("retransmit")
+            sock.send('ARQ'.encode())
+            retransmission = True
+    
+    for _ in range(0,2):
+        ret = detect_one_byte(sensor)
+        if ret == 'err':
+            print("interference detected, ARQ!")
+            sock.send('ARQ'.encode())
+            retransmission = True
+            break
+        num += (byte_decode(ret))
+
+    if ret != 'err':
+        for _ in range(0,int(num)):
+            ret = detect_bytes(sensor)
+            if ret == 'err':
+                print("interference detected, ARQ!")
+                sock.send('ARQ'.encode())
+                retransmission = True
+                break
+            msg += (ret)
+    
+    if ret != 'err':
+        print('Your msg is: ' + msg)
+        sock.send('ACK'.encode())
 
 def main():
     from grove.helper import SlotHelper
+
+    global sock
+    global retransmission
+    global gpio_pid
+    global num
+    global msg
+    global sensor
     
     # setup socket
     sock = socket.socket()
@@ -164,32 +242,8 @@ def main():
         gpio_pid = int(file.read())
         
     while True:
-        num =''
-        msg = ''
         sensor = GroveLightSensor(pin)
-        while sensor.light < 100:
-            continue
-        
-        print('Ready')
-        
-        while not detect_preamable(sensor):
-            
-            os.kill(gpio_pid, signal.SIGUSR1)
-            print('Not preamable. Send signal to sender!!!!!!')
-            continue
-            if not retransmission:
-                print("retransmit")
-                sock.send('ARQ'.encode())
-                retransmission = True
-        
-        for _ in range(0,2):
-            num += (byte_decode(detect_one_byte(sensor)))
-
-        for _ in range(0,int(num)):
-            msg += (detect_bytes(sensor))
-        
-        print('Your msg is: ' + msg)
-        sock.send('ACK'.encode())
+        decode_reliable()
         
 
 if __name__ == '__main__':
